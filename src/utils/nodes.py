@@ -50,7 +50,6 @@ class Program(ASTNode):
 
 class Decl(ASTNode):
     """Base class for declarations (struct or function)."""
-
     pass
 
 
@@ -132,7 +131,6 @@ class Param(ASTNode):
 
 class Type(ASTNode):
     """Base class for type annotations."""
-
     pass
 
 
@@ -209,7 +207,6 @@ class StructType(Type):
 
 class Stmt(ASTNode):
     """Base class for all statement nodes."""
-
     pass
 
 
@@ -224,9 +221,7 @@ class BlockStmt(Stmt):
         return visitor.visit_block_stmt(self, o)
 
     def __str__(self):
-        stmts_str = (
-            ", ".join(str(s) for s in self.statements) if self.statements else ""
-        )
+        stmts_str = ", ".join(str(s) for s in self.statements) if self.statements else ""
         return f"BlockStmt([{stmts_str}])"
 
 
@@ -253,20 +248,6 @@ class VarDecl(Stmt):
         type_str = "auto" if self.var_type is None else str(self.var_type)
         init_str = f" = {self.init_value}" if self.init_value else ""
         return f"VarDecl({type_str}, {self.name}{init_str})"
-
-
-class AssignStmt(Stmt):
-    """Assignment statement - contains an assignment expression."""
-
-    def __init__(self, assign_expr: "AssignExpr"):
-        super().__init__()
-        self.assign_expr = assign_expr
-
-    def accept(self, visitor, o=None):
-        return visitor.visit_assign_stmt(self, o)
-
-    def __str__(self):
-        return f"AssignStmt({self.assign_expr})"
 
 
 class IfStmt(Stmt):
@@ -308,13 +289,13 @@ class ForStmt(Stmt):
 
     def __init__(
         self,
-        init: Optional[Union["VarDecl", "AssignStmt"]],
+        init: Optional[Union["VarDecl", "ExprStmt"]],
         condition: Optional["Expr"],
         update: Optional["Expr"],
         body: Stmt,
     ):
         super().__init__()
-        self.init = init  # VarDecl, AssignStmt, or None
+        self.init = init  # VarDecl, ExprStmt, or None
         self.condition = condition
         self.update = update  # Expr or None (PrefixOp, PostfixOp, or AssignExpr)
         self.body = body
@@ -364,9 +345,7 @@ class CaseStmt(ASTNode):
         return visitor.visit_case_stmt(self, o)
 
     def __str__(self):
-        stmts_str = (
-            ", ".join(str(s) for s in self.statements) if self.statements else ""
-        )
+        stmts_str = ", ".join(str(s) for s in self.statements) if self.statements else ""
         return f"CaseStmt(case {self.expr}: [{stmts_str}])"
 
 
@@ -381,9 +360,7 @@ class DefaultStmt(ASTNode):
         return visitor.visit_default_stmt(self, o)
 
     def __str__(self):
-        stmts_str = (
-            ", ".join(str(s) for s in self.statements) if self.statements else ""
-        )
+        stmts_str = ", ".join(str(s) for s in self.statements) if self.statements else ""
         return f"DefaultStmt(default: [{stmts_str}])"
 
 
@@ -449,7 +426,6 @@ class ExprStmt(Stmt):
 
 class Expr(ASTNode):
     """Base class for all expression nodes."""
-
     pass
 
 
