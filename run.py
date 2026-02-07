@@ -301,7 +301,9 @@ class TyCBuilder:
 
         # Upgrade pip
         print(self.colors.yellow("Upgrading pip in virtual environment..."))
-        self.run_command([str(self.venv_pip), "install", "--upgrade", "pip"])
+        self.run_command(
+            [str(self.venv_python3), "-m", "pip", "install", "--upgrade", "pip"]
+        )
 
         # Install dependencies
         print(self.colors.yellow("Installing Python dependencies..."))
