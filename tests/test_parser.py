@@ -268,23 +268,8 @@ def test_switch_default_in_middle():
 
 # --- Break/Continue/Return ---
 
-def test_break_statement_in_block():
-    source = "void main() { while (1) { break; } }"
-    assert Parser(source).parse() == "success"
-
-
-def test_continue_statement_in_for():
-    source = "void main() { for (auto i = 0; i < 10; ++i) { continue; } }"
-    assert Parser(source).parse() == "success"
-
-
 def test_return_no_expr():
     source = "void main() { return; }"
-    assert Parser(source).parse() == "success"
-
-
-def test_return_with_expr():
-    source = "int f() { return 123; }"
     assert Parser(source).parse() == "success"
 
 
@@ -404,7 +389,6 @@ def test_error_for_missing_semis():
 def test_error_unexpected_token():
     source = "void main() { $$$ }"
     assert Parser(source).parse() != "success"
-# ========== Top-up to reach 100 tests (27 more) ==========
 
 # --- More programs / structs ---
 

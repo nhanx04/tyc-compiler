@@ -130,7 +130,6 @@ stmtList
 varDeclStmt
     : AUTO ID varDeclAutoInitOpt SEMI
     | typeSpec ID varDeclTypedInitOpt SEMI
-    | typeSpec ID SEMI
     ;
 
 varDeclAutoInitOpt
@@ -482,10 +481,6 @@ FLOATLIT
 fragment ESC: '\\' [bfrnt"\\];
 fragment STR_CHAR: ~["\\\r\n] | ESC;
 
-STRINGLIT
-  : '"' STR_CHAR* '"'
-  ;
-
 ILLEGAL_ESCAPE
   : '"' (STR_CHAR)* '\\' ~[bfrnt"\\]
   ;
@@ -494,6 +489,9 @@ UNCLOSE_STRING
   : '"' STR_CHAR* ( '\r' | '\n' | EOF )
   ;
 
+STRINGLIT
+  : '"' STR_CHAR* '"'
+  ;
 
 LINE_COMMENT: '//' ~[\r\n]* -> skip;
 BLOCK_COMMENT: '/*' .*? '*/' -> skip;

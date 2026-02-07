@@ -389,9 +389,9 @@ def test_many_commas_in_args():
     assert tokenizer.get_tokens_as_string() == "f,(,1,,,2,,,3,,,4,),;,<EOF>"
 
 
-def test_array_brackets_tokens_exist():
-    tokenizer = Tokenizer("a[1]=2;")
-    assert tokenizer.get_tokens_as_string() == "a,[,1,],=,2,;,<EOF>"
+def test_separator_dot():
+    tokenizer = Tokenizer(".")
+    assert tokenizer.get_tokens_as_string() == ".,<EOF>"
 
 
 def test_dot_vs_float_1():
@@ -427,7 +427,6 @@ def test_plus_minus_unary_like():
 def test_complex_whitespace_and_comments():
     tokenizer = Tokenizer("  auto  x/*c*/=\n5  +\t3;//d\n")
     assert tokenizer.get_tokens_as_string() == "auto,x,=,5,+,3,;,<EOF>"
-# ========== Top-up to reach 100 tests (18 more) ==========
 
 def test_error_char_tilde():
     tokenizer = Tokenizer("~")
