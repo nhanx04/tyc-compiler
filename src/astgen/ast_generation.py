@@ -1,389 +1,190 @@
-"""AST Generation for TyC parse tree -> AST nodes."""
-
 from build.TyCVisitor import TyCVisitor
 from src.utils.nodes import *
 
 
 class ASTGeneration(TyCVisitor):
-    """AST Generation visitor for TyC language."""
-
     def visitProgram(self, ctx):
-        return Program(self.visit(ctx.topDeclList()))
+        decls = [self.visit(c) for c in ctx.getChildren() if type(c).__name__.endswith(("StructsContext", "FunctionsContext"))]
+        return Program(decls)
 
-    def visitTopDeclList(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.topDecl())] + self.visit(ctx.topDeclList())
+    def visitStructs(self, ctx):
+        return StructDecl(ctx.ID().getText(), [self.visit(x) for x in ctx.struct_var_statement()])
 
-    def visitTopDecl(self, ctx):
-        return self.visit(ctx.getChild(0))
+    def visitStruct_var_statement(self, ctx):
+        return MemberDecl(self.visit(ctx.all_struct_type()), ctx.ID().getText())
 
-    def visitStructDecl(self, ctx):
-        return StructDecl(ctx.ID().getText(), self.visit(ctx.structMemberDeclList()))
-
-    def visitStructMemberDeclList(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.structMemberDecl())] + self.visit(ctx.structMemberDeclList())
-
-    def visitStructMemberDecl(self, ctx):
-        return MemberDecl(self.visit(ctx.typeSpec()), ctx.ID().getText())
-
-    def visitFuncDecl(self, ctx):
-        return FuncDecl(
-            self.visit(ctx.returnTypeOpt()),
-            ctx.ID().getText(),
-            self.visit(ctx.paramListOpt()),
-            self.visit(ctx.blockStmt()),
-        )
-
-    def visitReturnTypeOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return None
-        return self.visit(ctx.returnType())
-
-    def visitReturnType(self, ctx):
-        if ctx.VOID():
-            return VoidType()
-        return self.visit(ctx.typeSpec())
-
-    def visitParamListOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return self.visit(ctx.paramList())
-
-    def visitParamList(self, ctx):
-        return [self.visit(ctx.param())] + self.visit(ctx.paramListTail())
-
-    def visitParamListTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.param())] + self.visit(ctx.paramListTail())
-
-    def visitParam(self, ctx):
-        return Param(self.visit(ctx.typeSpec()), ctx.ID().getText())
-
-    def visitTypeSpec(self, ctx):
-        if ctx.INT():
+    def visitAll_struct_type(self, ctx):
+        t = ctx.getText()
+        if t == "int":
             return IntType()
-        if ctx.FLOAT():
+        if t == "float":
             return FloatType()
-        if ctx.STRING():
+        if t == "string":
             return StringType()
-        return StructType(ctx.ID().getText())
+        return StructType(t)
 
-    def visitStmt(self, ctx):
+    def visitFunctions(self, ctx):
+        return FuncDecl(self.visit(ctx.all_func_type()) if ctx.all_func_type() else None, ctx.ID().getText(), self.visit(ctx.params()) if ctx.params() else [], self.visit(ctx.block_statement()))
+
+    def visitAll_func_type(self, ctx):
+        t = ctx.getText()
+        if t == "int":
+            return IntType()
+        if t == "float":
+            return FloatType()
+        if t == "string":
+            return StringType()
+        if t == "void":
+            return VoidType()
+        return StructType(t)
+
+    def visitParams(self, ctx):
+        return self.visit(ctx.list_param()) if ctx.list_param() else []
+
+    def visitList_param(self, ctx):
+        tys, ids = ctx.all_param_type(), ctx.ID()
+        return [Param(self.visit(ty), ids[i].getText()) for i, ty in enumerate(tys)]
+
+    def visitAll_param_type(self, ctx):
+        t = ctx.getText()
+        if t == "int":
+            return IntType()
+        if t == "float":
+            return FloatType()
+        if t == "string":
+            return StringType()
+        return StructType(t)
+
+    def visitList_statement(self, ctx):
+        return [self.visit(s) for s in ctx.statement()]
+
+    def visitStatement(self, ctx):
         return self.visit(ctx.getChild(0))
 
-    def visitBlockStmt(self, ctx):
-        return BlockStmt(self.visit(ctx.stmtList()))
+    def visitVar_statement(self, ctx):
+        return VarDecl(self.visit(ctx.all_type()), ctx.ID().getText(), self.visit(ctx.expression()) if ctx.expression() else None)
 
-    def visitStmtList(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.stmt())] + self.visit(ctx.stmtList())
-
-    def visitVarDeclStmt(self, ctx):
-        name = ctx.ID().getText()
-        if ctx.AUTO():
-            init = self.visit(ctx.varDeclAutoInitOpt())
-            return VarDecl(None, name, init)
-        var_type = self.visit(ctx.typeSpec())
-        init = self.visit(ctx.varDeclTypedInitOpt())
-        return VarDecl(var_type, name, init)
-
-    def visitVarDeclAutoInitOpt(self, ctx):
-        return self.visit(ctx.expr()) if ctx.getChildCount() else None
-
-    def visitVarDeclTypedInitOpt(self, ctx):
-        if ctx.getChildCount() == 0:
+    def visitAll_type(self, ctx):
+        t = ctx.getText()
+        if t == "int":
+            return IntType()
+        if t == "float":
+            return FloatType()
+        if t == "string":
+            return StringType()
+        if t == "auto":
             return None
-        if ctx.expr():
-            return self.visit(ctx.expr())
-        return self.visit(ctx.structInit())
+        return StructType(t)
 
-    def visitStructInit(self, ctx):
-        return StructLiteral(self.visit(ctx.structInitListOpt()))
+    def visitIf_statement(self, ctx):
+        return IfStmt(self.visit(ctx.expression()), self.visit(ctx.statement(0)), self.visit(ctx.statement(1)) if len(ctx.statement()) > 1 else None)
 
-    def visitStructInitListOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.structInitElem())] + self.visit(ctx.structInitListTail())
+    def visitWhile_statement(self, ctx):
+        return WhileStmt(self.visit(ctx.expression()), self.visit(ctx.statement()))
 
-    def visitStructInitListTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.structInitElem())] + self.visit(ctx.structInitListTail())
+    def visitFor_statement(self, ctx):
+        return ForStmt(self.visit(ctx.first()) if ctx.first() else None, self.visit(ctx.expression()) if ctx.expression() else None, self.visit(ctx.third()) if ctx.third() else None, self.visit(ctx.statement()))
 
-    def visitStructInitElem(self, ctx):
-        if ctx.expr():
-            return self.visit(ctx.expr())
-        return self.visit(ctx.structInit())
+    def visitFirst(self, ctx):
+        return self.visit(ctx.for_var_statement()) if ctx.for_var_statement() else ExprStmt(self.visit(ctx.assign()))
 
-    def visitIfStmt(self, ctx):
-        return IfStmt(
-            self.visit(ctx.expr()),
-            self.visit(ctx.stmt()),
-            self.visit(ctx.elseOpt()),
-        )
+    def visitFor_var_statement(self, ctx):
+        var_type = self.visit(ctx.all_type()) if ctx.all_type() else StructType(ctx.ID(0).getText())
+        var_name = ctx.ID()[-1].getText() if isinstance(ctx.ID(), list) else ctx.ID().getText()
+        return VarDecl(var_type, var_name, self.visit(ctx.expression()) if ctx.expression() else None)
 
-    def visitElseOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return None
-        return self.visit(ctx.stmt())
+    def visitThird(self, ctx):
+        return self.visit(ctx.incre_decre()) if ctx.incre_decre() else self.visit(ctx.assign())
 
+    def visitIncre_decre(self, ctx):
+        if ctx.getChild(0).getText() in ["++", "--"]:
+            return PrefixOp(ctx.getChild(0).getText(), self.visit(ctx.lhs()))
+        return PostfixOp(ctx.getChild(1).getText(), self.visit(ctx.lhs()))
 
-    def visitWhileStmt(self, ctx):
-        return WhileStmt(self.visit(ctx.expr()), self.visit(ctx.stmt()))
+    def visitAssign(self, ctx):
+        return AssignExpr(self.visit(ctx.lhs()), self.visit(ctx.expression()))
 
-    def visitForStmt(self, ctx):
-        init = self.visit(ctx.forInitOpt())
-        cond = self.visit(ctx.exprOpt())
-        update = self.visit(ctx.forUpdateOpt())
-        return ForStmt(init, cond, update, self.visit(ctx.stmt()))
+    def visitSwitch_statement(self, ctx):
+        return SwitchStmt(self.visit(ctx.expression()), [self.visit(c) for c in ctx.case_statement()], self.visit(ctx.default_statement()) if ctx.default_statement() else None)
 
-    def visitForInitOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return None
-        return self.visit(ctx.forInit())
+    def visitCase_statement(self, ctx):
+        return CaseStmt(self.visit(ctx.expression()), self.visit(ctx.list_statement()) if ctx.list_statement() else [])
 
-    def visitForInit(self, ctx):
-        if ctx.varDeclFor():
-            return self.visit(ctx.varDeclFor())
-        return ExprStmt(self.visit(ctx.assignExpr()))
+    def visitDefault_statement(self, ctx):
+        return DefaultStmt(self.visit(ctx.list_statement()) if ctx.list_statement() else [])
 
-    def visitExprOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return None
-        return self.visit(ctx.expr())
-
-    def visitVarDeclFor(self, ctx):
-        name = ctx.ID().getText()
-        if ctx.AUTO():
-            init = self.visit(ctx.varDeclAutoInitOpt())
-            return VarDecl(None, name, init)
-        var_type = self.visit(ctx.typeSpec())
-        init = self.visit(ctx.varDeclTypedInitOpt())
-        return VarDecl(var_type, name, init)
-
-    def visitForUpdateOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return None
-        return self.visit(ctx.forUpdate())
-
-    def visitForUpdate(self, ctx):
-        if ctx.assignExpr():
-            return self.visit(ctx.assignExpr())
-        return self.visit(ctx.postfixExpr())
-
-    def visitSwitchStmt(self, ctx):
-        sections = self.visit(ctx.switchSectionList())
-        cases = []
-        default_case = None
-        for sec in sections:
-            labels, stmts = sec
-            for lb in labels:
-                if lb is None:
-                    if default_case is None:
-                        default_case = DefaultStmt(stmts)
-                else:
-                    cases.append(CaseStmt(lb, stmts))
-        return SwitchStmt(self.visit(ctx.expr()), cases, default_case)
-
-    def visitSwitchSectionList(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.switchSection())] + self.visit(ctx.switchSectionList())
-
-    def visitSwitchSection(self, ctx):
-        labels = self.visit(ctx.caseLabelPlus()) if ctx.caseLabelPlus() else [None]
-        stmts = self.visit(ctx.stmtList())
-        return labels, stmts
-
-    def visitCaseLabelPlus(self, ctx):
-        return [self.visit(ctx.caseLabel())] + self.visit(ctx.caseLabelStar())
-
-    def visitCaseLabelStar(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.caseLabel())] + self.visit(ctx.caseLabelStar())
-
-    def visitCaseLabel(self, ctx):
-        return self.visit(ctx.expr())
-
-    def visitDefaultLabel(self, ctx):
-        return None
-
-    def visitBreakStmt(self, ctx):
+    def visitBreak_statement(self, _):
         return BreakStmt()
 
-    def visitContinueStmt(self, ctx):
+    def visitContinue_statement(self, _):
         return ContinueStmt()
 
-    def visitReturnStmt(self, ctx):
-        return ReturnStmt(self.visit(ctx.returnExprOpt()))
+    def visitBlock_statement(self, ctx):
+        return BlockStmt(self.visit(ctx.list_statement()) if ctx.list_statement() else [])
 
-    def visitReturnExprOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return None
-        return self.visit(ctx.expr())
+    def visitExpression_statement(self, ctx):
+        return ExprStmt(self.visit(ctx.expression()))
 
-    def visitExprStmt(self, ctx):
-        return ExprStmt(self.visit(ctx.expr()))
+    def visitReturn_statement(self, ctx):
+        return ReturnStmt(self.visit(ctx.expression()) if ctx.expression() else None)
 
-    def visitExpr(self, ctx):
-        return self.visit(ctx.assignExpr())
+    def visitCall_statement(self, ctx):
+        return ExprStmt(self.visit(ctx.function_call()))
 
-    def visitAssignExpr(self, ctx):
-        if ctx.getChildCount() == 1:
-            return self.visit(ctx.orExpr())
-        return AssignExpr(self.visit(ctx.lhs()), self.visit(ctx.assignExpr()))
+    def visitList_expression(self, ctx):
+        return [self.visit(e) for e in ctx.expression()]
+
+    def visitExpression(self, ctx):
+        if ctx.ASSIGN(): return AssignExpr(self.visit(ctx.lhs()), self.visit(ctx.expression()))
+        return self.visit(ctx.expression1()) if ctx.expression1() else self.visit(ctx.all_literal())
 
     def visitLhs(self, ctx):
-        if ctx.getChildCount() == 1:
-            return Identifier(ctx.ID().getText())
-        return MemberAccess(self.visit(ctx.postfixExpr()), ctx.ID().getText())
+        return Identifier(ctx.ID().getText()) if ctx.getChildCount() == 1 else MemberAccess(self.visit(ctx.expression10()), ctx.ID().getText())
 
-    def visitOrExpr(self, ctx):
-        left = self.visit(ctx.andExpr())
-        for op, right_ctx in self.visit(ctx.orExprTail()):
-            left = BinaryOp(left, op, right_ctx)
-        return left
+    def visitExpression1(self, ctx):
+        return self.visit(ctx.expression2()) if ctx.getChildCount() == 1 else BinaryOp(self.visit(ctx.expression1()), ctx.OR().getText(), self.visit(ctx.expression2()))
 
-    def visitOrExprTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [(ctx.OR().getText(), self.visit(ctx.andExpr()))] + self.visit(ctx.orExprTail())
+    def visitExpression2(self, ctx):
+        return self.visit(ctx.expression3()) if ctx.getChildCount() == 1 else BinaryOp(self.visit(ctx.expression2()), ctx.AND().getText(), self.visit(ctx.expression3()))
 
-    def visitAndExpr(self, ctx):
-        left = self.visit(ctx.eqExpr())
-        for op, right in self.visit(ctx.andExprTail()):
-            left = BinaryOp(left, op, right)
-        return left
+    def visitExpression3(self, ctx):
+        return self.visit(ctx.expression4()) if ctx.getChildCount() == 1 else BinaryOp(self.visit(ctx.expression3()), ctx.getChild(1).getText(), self.visit(ctx.expression4()))
 
-    def visitAndExprTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [(ctx.AND().getText(), self.visit(ctx.eqExpr()))] + self.visit(ctx.andExprTail())
+    def visitExpression4(self, ctx):
+        return self.visit(ctx.expression5()) if ctx.getChildCount() == 1 else BinaryOp(self.visit(ctx.expression4()), ctx.getChild(1).getText(), self.visit(ctx.expression5()))
 
-    def visitEqExpr(self, ctx):
-        left = self.visit(ctx.relExpr())
-        for op, right in self.visit(ctx.eqExprTail()):
-            left = BinaryOp(left, op, right)
-        return left
+    def visitExpression5(self, ctx):
+        return self.visit(ctx.expression6()) if ctx.getChildCount() == 1 else BinaryOp(self.visit(ctx.expression5()), ctx.getChild(1).getText(), self.visit(ctx.expression6()))
 
-    def visitEqExprTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [(self.visit(ctx.eqOp()), self.visit(ctx.relExpr()))] + self.visit(ctx.eqExprTail())
+    def visitExpression6(self, ctx):
+        return self.visit(ctx.expression7()) if ctx.getChildCount() == 1 else BinaryOp(self.visit(ctx.expression6()), ctx.getChild(1).getText(), self.visit(ctx.expression7()))
 
-    def visitEqOp(self, ctx):
-        return ctx.getChild(0).getText()
+    def visitExpression7(self, ctx):
+        return self.visit(ctx.expression8()) if ctx.getChildCount() == 1 else PrefixOp(ctx.getChild(0).getText(), self.visit(ctx.expression7()))
 
-    def visitRelExpr(self, ctx):
-        left = self.visit(ctx.addExpr())
-        for op, right in self.visit(ctx.relExprTail()):
-            left = BinaryOp(left, op, right)
-        return left
+    def visitExpression8(self, ctx):
+        return self.visit(ctx.expression9()) if ctx.getChildCount() == 1 else PrefixOp(ctx.getChild(0).getText(), self.visit(ctx.expression8()))
 
-    def visitRelExprTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [(self.visit(ctx.relOp()), self.visit(ctx.addExpr()))] + self.visit(ctx.relExprTail())
+    def visitExpression9(self, ctx):
+        return self.visit(ctx.expression10()) if ctx.getChildCount() == 1 else PostfixOp(ctx.getChild(1).getText(), self.visit(ctx.expression9()))
 
-    def visitRelOp(self, ctx):
-        return ctx.getChild(0).getText()
+    def visitExpression10(self, ctx):
+        return self.visit(ctx.primary()) if ctx.getChildCount() == 1 else MemberAccess(self.visit(ctx.expression10()), ctx.ID().getText())
 
-    def visitAddExpr(self, ctx):
-        left = self.visit(ctx.mulExpr())
-        for op, right in self.visit(ctx.addExprTail()):
-            left = BinaryOp(left, op, right)
-        return left
+    def visitPrimary(self, ctx):
+        if ctx.expression(): return self.visit(ctx.expression())
+        if ctx.all_literal(): return self.visit(ctx.all_literal())
+        if ctx.function_call(): return self.visit(ctx.function_call())
+        return Identifier(ctx.ID().getText())
 
-    def visitAddExprTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [(self.visit(ctx.addOp()), self.visit(ctx.mulExpr()))] + self.visit(ctx.addExprTail())
+    def visitFunction_call(self, ctx):
+        return FuncCall(ctx.ID().getText(), [self.visit(e) for e in ctx.expression()])
 
-    def visitAddOp(self, ctx):
-        return ctx.getChild(0).getText()
+    def visitAll_literal(self, ctx):
+        if ctx.INT_LIT(): return IntLiteral(int(ctx.INT_LIT().getText()))
+        if ctx.FLOAT_LIT(): return FloatLiteral(float(ctx.FLOAT_LIT().getText()))
+        if ctx.STRING_LIT(): return StringLiteral(ctx.STRING_LIT().getText())
+        return self.visit(ctx.struct_literal())
 
-    def visitMulExpr(self, ctx):
-        left = self.visit(ctx.unaryExpr())
-        for op, right in self.visit(ctx.mulExprTail()):
-            left = BinaryOp(left, op, right)
-        return left
-
-    def visitMulExprTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [(self.visit(ctx.mulOp()), self.visit(ctx.unaryExpr()))] + self.visit(ctx.mulExprTail())
-
-    def visitMulOp(self, ctx):
-        return ctx.getChild(0).getText()
-
-    def visitUnaryExpr(self, ctx):
-        if ctx.getChildCount() == 1:
-            return self.visit(ctx.postfixExpr())
-        return PrefixOp(self.visit(ctx.unaryOp()), self.visit(ctx.unaryExpr()))
-
-    def visitUnaryOp(self, ctx):
-        return ctx.getChild(0).getText()
-
-    def visitPostfixExpr(self, ctx):
-        base = self.visit(ctx.primaryExpr())
-        for tail in self.visit(ctx.postfixTailList()):
-            kind = tail[0]
-            if kind == "member":
-                base = MemberAccess(base, tail[1])
-            elif kind == "call":
-                if isinstance(base, Identifier):
-                    base = FuncCall(base.name, tail[1])
-                else:
-                    base = FuncCall(str(base), tail[1])
-            elif kind == "postfix":
-                base = PostfixOp(tail[1], base)
-        return base
-
-    def visitPostfixTailList(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.postfixTail())] + self.visit(ctx.postfixTailList())
-
-    def visitPostfixTail(self, ctx):
-        if ctx.DOT():
-            return ("member", ctx.ID().getText())
-        if ctx.LPAREN():
-            return ("call", self.visit(ctx.argListOpt()))
-        return ("postfix", ctx.getChild(0).getText())
-
-    def visitArgListOpt(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return self.visit(ctx.argList())
-
-    def visitArgList(self, ctx):
-        return [self.visit(ctx.expr())] + self.visit(ctx.argListTail())
-
-    def visitArgListTail(self, ctx):
-        if ctx.getChildCount() == 0:
-            return []
-        return [self.visit(ctx.expr())] + self.visit(ctx.argListTail())
-
-    def visitPrimaryExpr(self, ctx):
-        if ctx.literal():
-            return self.visit(ctx.literal())
-        if ctx.ID():
-            return Identifier(ctx.ID().getText())
-        if ctx.expr():
-            return self.visit(ctx.expr())
-        return None
-
-    def visitLiteral(self, ctx):
-        if ctx.INTLIT():
-            return IntLiteral(int(ctx.INTLIT().getText()))
-        if ctx.FLOATLIT():
-            return FloatLiteral(float(ctx.FLOATLIT().getText()))
-        if ctx.STRINGLIT():
-            return StringLiteral(ctx.STRINGLIT().getText())
-        return None
+    def visitStruct_literal(self, ctx):
+        return StructLiteral([self.visit(e) for e in ctx.expression()])

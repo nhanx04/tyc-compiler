@@ -87,16 +87,15 @@ statement: var_statement SEMI
 var_statement: (all_type) ID (ASSIGN expression)?; // lệnh khai báo
 all_type: FLOAT | INT | STRING | AUTO | ID;
 // hỗ trợ: khai báo có khởi tạo và không có khởi tạo
-if_statement: IF LPAREN expression RPAREN body (ELSE body)?; // cần xem lại
+if_statement: IF LPAREN expression RPAREN statement (ELSE statement)?;
 // OK
-while_statement: WHILE LPAREN expression RPAREN body;
+while_statement: WHILE LPAREN expression RPAREN statement;
 // OK
-for_statement: FOR LPAREN (first)?  SEMI expression? SEMI (third)?  RPAREN body;
+for_statement: FOR LPAREN (first)? SEMI expression? SEMI (third)? RPAREN statement;
 first: for_var_statement | assign;
-for_var_statement: (all_type | ID) ID (ASSIGN expression)?;
+for_var_statement: all_type ID (ASSIGN expression)?;
 third: incre_decre | assign;
-incre_decre: (INCRE | DECRE)* lhs3 (INCRE | DECRE)*;
-lhs3: expression10 ACCESS ID | ID | all_literal | LPAREN expression RPAREN;
+incre_decre: (INCRE | DECRE) lhs | lhs (INCRE | DECRE);
 assign: lhs ASSIGN expression;
 // OK
 switch_statement: SWITCH LPAREN expression RPAREN LBRACE case_statement* default_statement? case_statement* RBRACE; 
@@ -113,13 +112,6 @@ expression_statement: expression;
 return_statement: RETURN expression? SEMI;
 call_statement: function_call SEMI;
 
-body: single_statement | block_statement | if_statement;
-single_statement: var_statement SEMI
-                | expression_statement SEMI
-                | return_statement
-                | break_statement
-                | continue_statement
-                | call_statement;
 
 // TODO Structs and Functions
 
