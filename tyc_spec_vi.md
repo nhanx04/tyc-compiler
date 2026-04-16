@@ -509,6 +509,22 @@ Toán hạng phải là kiểu **int**. Giá trị float không thể dùng vớ
 
 trong đó `<argument_list>` là danh sách các biểu thức ngăn cách bằng dấu phẩy (hoặc rỗng). Kiểu của biểu thức lời gọi hàm là kiểu trả về của hàm được gọi.
 
+### Biểu thức gán (Assignment Expression)
+
+**Biểu thức gán** gán một giá trị cho biến và cũng có thể được dùng như một biểu thức. Dạng:
+
+```tyc
+<identifier> = <expression>
+```
+
+hoặc
+
+```tyc
+<member_access> = <expression>
+```
+
+Biểu thức gán có tính kết hợp phải (right-associative), cho phép gán chuỗi như `x = y = z = 10;`, được phân tích là `x = (y = (z = 10));`. Biểu thức gán có thể xuất hiện trong ngữ cảnh biểu thức, ví dụ: `int y = (x = 5) + 7;`.
+
 ### Biểu thức cơ sở (Primary Expression)
 
 Biểu thức cơ sở gồm:

@@ -106,6 +106,59 @@ Lớp `ASTGeneration` phải:
 
 ---
 
+## Bài tập 3 - Phân tích ngữ nghĩa tĩnh
+
+### Các yêu cầu cần hoàn thành
+
+1. **Nghiên cứu ràng buộc ngữ nghĩa và các loại lỗi**
+   - Đọc kỹ toàn bộ quy tắc ngữ nghĩa trong `tyc-semantic_constraints_and_errors.md`
+   - Hiểu đầy đủ yêu cầu phát hiện lỗi
+   - Nắm chắc hệ suy luận kiểu và quy tắc quản lý phạm vi
+
+2. **Cài đặt StaticChecker**
+   - Cài đặt lớp `StaticChecker` trong `src/semantics/static_checker.py` (hiện tại là skeleton `NotImplementedError`)
+   - Kế thừa từ `ASTVisitor` để duyệt các node AST
+   - Cài đặt đầy đủ kiểm tra ngữ nghĩa cho toàn bộ tính năng ngôn ngữ
+   - Xử lý quản lý phạm vi, suy luận kiểu, kiểm tra kiểu, và phát hiện lỗi
+
+3. **Viết 100 test cho static checker**
+   - Cài đặt **100 test case** trong `tests/test_checker.py`
+   - Kiểm thử tất cả loại lỗi ngữ nghĩa và chương trình hợp lệ
+   - Phủ các edge case và các tình huống ngữ nghĩa phức tạp
+   - Xác minh đúng thông điệp lỗi và đúng hành vi chấp nhận chương trình
+
+### Yêu cầu đối với phân tích ngữ nghĩa
+
+📋 **Xem chi tiết tại [Semantic Constraints and Errors](tyc-semantic_constraints_and_errors.md)**
+
+Lớp `StaticChecker` phải:
+
+- **Kế thừa từ ASTVisitor**: Dùng visitor pattern để duyệt AST
+- **Suy luận kiểu**: Cài đặt đầy đủ suy luận kiểu cho biến `auto`
+- **Quản lý phạm vi**: Xử lý scope toàn cục (hàm, struct) và cục bộ (biến, tham số)
+- **Phát hiện lỗi**: Phát hiện đầy đủ 8 loại lỗi theo tài liệu ràng buộc ngữ nghĩa
+- **Kiểm tra kiểu**: Đảm bảo tương thích kiểu trong câu lệnh/biểu thức theo quy tắc kiểu chặt của TyC
+
+### Các loại lỗi cần phát hiện
+
+1. **Redeclared** - Khai báo trùng biến, hàm, struct, hoặc tham số
+2. **UndeclaredIdentifier** - Dùng biến/tham số chưa khai báo
+3. **UndeclaredFunction** - Gọi hàm chưa khai báo
+4. **UndeclaredStruct** - Dùng kiểu struct chưa khai báo
+5. **TypeCannotBeInferred** - Không thể suy luận kiểu
+6. **TypeMismatchInStatement** - Sai kiểu trong câu lệnh
+7. **TypeMismatchInExpression** - Sai kiểu trong biểu thức
+8. **MustInLoop** - `break`/`continue` nằm ngoài vòng lặp
+
+### Tiêu chí đánh giá
+
+- **Cài đặt semantic**: Đúng và đầy đủ của `StaticChecker`
+- **Suy luận kiểu**: Chính xác cho mọi khai báo `auto`
+- **Phát hiện lỗi**: Đúng tất cả loại lỗi bắt buộc
+- **Độ phủ kiểm thử**: Chất lượng và mức bao phủ của 100 test semantic
+
+---
+
 ## Cấu trúc dự án
 
 ```

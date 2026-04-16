@@ -1,4 +1,5 @@
 # TyC Programming Language - Semantic Constraints and Error Types
+
 **Static Semantic Analysis Reference**  
 **Version 1.0 - January 2026**
 
@@ -28,16 +29,19 @@ The TyC static semantic checker must detect and report the following error types
 **Rule:** All declarations must be unique within their respective scopes as defined in the TyC specification.
 
 **Exception:** `Redeclared(<kind>, <identifier>)`
+
 - `<kind>`: Type of redeclared entity (`Variable`, `Function`, `Struct`, `Parameter`, `Member`)
 - `<identifier>`: Name of the redeclared identifier
 
 **Scope-specific Rules:**
+
 - **Global scope:** Struct names must be unique among all struct declarations, and function names must be unique among all function declarations (no overloading). **Struct type names and function names use separate namespaces:** the same identifier may name both a struct type and a function (e.g. `struct foo { ... };` and `int foo(int x, int y) { ... }` are valid). Context disambiguates—type position in declarations vs. `(` in a call.
 - **Function scope:** Parameters belong to the function's scope and are visible throughout the entire function body. Parameter names must be unique within the same parameter list. **You must not declare a local variable with the same name as a parameter anywhere in that function's body**, including inside nested `{ }` blocks; that is reported as `Redeclared(Variable, <name>)` (not shadowing). TyC does not allow inner blocks to shadow an enclosing function's parameters.
 - **Local scope (block):** Variables must have unique names within the same block.
 - **Shadowing:** Variables in nested blocks may shadow **other local variables** from outer blocks in the same function, subject to the rule above (parameters cannot be shadowed).
 
 **Examples:**
+
 ```tyc
 // Error: Redeclared Struct in global scope
 struct Point {
@@ -90,7 +94,7 @@ struct Point {
 // Valid: Shadowing in different scopes
 void example() {
     int value = 100;  // Function variable
-    
+
     {
         int value = 200;  // Valid: shadows function variable
         {
@@ -116,6 +120,7 @@ void test() {
 **Exception:** `UndeclaredIdentifier(<identifier>)`
 
 **Identifier Resolution Rules:**
+
 - Identifiers are resolved by searching from innermost scope outward
 - Variables must be declared before use within the same or enclosing scope
 - A variable's initializer is checked without that variable in scope (see **`tyc_specification.md` § Scope Rules**)
@@ -123,6 +128,7 @@ void test() {
 - Global variables are not supported in TyC (only function/struct declarations are global)
 
 **Examples:**
+
 ```tyc
 // Error: Undeclared Variable
 void example() {
@@ -172,12 +178,14 @@ void nested() {
 **Exception:** `UndeclaredFunction(<function-name>)`
 
 **Function Declaration Rules:**
+
 - Functions have global scope
 - Functions can be called from anywhere after declaration
 - Function names must be unique among functions (no function overloading); a function name may match a struct type name
 - Built-in functions (`readInt`, `readFloat`, `readString`, `printInt`, `printFloat`, `printString`) are implicitly declared
 
 **Examples:**
+
 ```tyc
 // Error: Undeclared Function
 void main() {
@@ -218,6 +226,7 @@ void example() {
 **Exception:** `UndeclaredStruct(<struct-name>)`
 
 **Struct Declaration Rules:**
+
 - Structs have global scope
 - Struct types can be used throughout the program after declaration
 - Struct names must be unique among struct types (may match a function name—separate namespace)
@@ -225,6 +234,7 @@ void example() {
 - A member's type cannot be the struct currently being declared (see **`tyc_specification.md` § Struct Type**)
 
 **Examples:**
+
 ```tyc
 // Error: Undeclared Struct
 void main() {
@@ -402,19 +412,23 @@ void valid6() {
 **Statement Type Rules:**
 
 **Conditional Statements (if, while, for):**
+
 - If/while/for condition expression must evaluate to `int` type (0 is false, non-zero is true)
 
 **For Statement:**
+
 - `<init>`, `<condition>`, `<update>` follow their respective type rules
 - Condition must evaluate to `int` type
 
 **Assignment Statements (`ExprStmt` with `AssignExpr`):**
+
 - Left-hand side and right-hand side must have the same type
 - Struct assignment: both sides must be the same struct type
 - A struct literal on the right-hand side that fails arity or per-member checks against the expected struct type is **`TypeMismatchInExpression`** on that literal, not **`TypeMismatchInStatement`** for that failure alone (see **Struct literal**)
 - No type coercion in assignments (unlike some languages)
 
 **Assignment Expression Behavior:**
+
 - Assignment can be used as an expression (not just a statement)
 - Assignment expression is right-associative: `x = y = z = 10;` is parsed as `x = (y = (z = 10));`
 - Assignment expression returns the value of the left-hand side after assignment
@@ -423,16 +437,19 @@ void valid6() {
 - Assignment expression can be used in expression contexts: `int y = (x = 5) + 7;` is valid
 
 **Return Statements:**
+
 - Return expression must match function return type (if function returns non-void)
 - If function return type is `void`, `return;` (without expression) must be used
 - If function return type is non-void, `return <expression>;` must return a value of that type
 - For functions with inferred return type, the return type is inferred from the first return statement that returns a value. All subsequent return statements must return a value of the inferred type - if a return statement returns a value of a different type, it is a TypeMismatchInStatement error
 
 **Switch Statements:**
+
 - Switch expression must evaluate to `int` type
 - Case labels must be integer literals or constant expressions evaluating to `int`
 
 **Examples:**
+
 ```tyc
 // Error: Non-int condition in if statement
 void conditionalError() {
@@ -440,7 +457,7 @@ void conditionalError() {
     if (x) {  // Error: TypeMismatchInStatement at if statement
         printInt(1);
     }
-    
+
     string message = "hello";
     if (message) {  // Error: TypeMismatchInStatement at if statement
         printString(message);
@@ -460,7 +477,7 @@ void assignmentError() {
     int x = 10;
     string text = "hello";
     float f = 3.14;
-    
+
     x = text;    // Error: TypeMismatchInStatement at assignment
     text = x;    // Error: TypeMismatchInStatement at assignment
     f = x;       // Error: TypeMismatchInStatement at assignment (no int to float coercion in assignment)
@@ -515,7 +532,7 @@ void valid() {
     if (x < y) {  // Valid: condition is int
         x = y;    // Valid: both sides are int
     }
-    
+
     Point p1 = {10, 20};
     Point p2 = {30, 40};
     p1 = p2;      // Valid: both sides are Point
@@ -526,11 +543,11 @@ void assignmentExpressionValid() {
     int x;
     int y = (x = 5) + 7;  // Valid: assignment expression returns value of x (after assignment)
     // y = 12, x = 5
-    
+
     int a, b, c;
     a = b = c = 10;  // Valid: right-associative chained assignment
     // All a, b, c are 10
-    
+
     struct Point {
         int x;
         int y;
@@ -550,45 +567,55 @@ void assignmentExpressionValid() {
 **Expression Type Rules:**
 
 **Binary Arithmetic Operators (`+`, `-`, `*`, `/`):**
+
 - Both operands must be `int` or `float`
 - Result type: `int` if both operands are `int`, otherwise `float`
 
 **Modulus Operator (`%`):**
+
 - Both operands must be `int`
 - Result type: `int`
 
 **Relational Operators (`==`, `!=`, `<`, `<=`, `>`, `>=`):**
+
 - Both operands must be `int` or `float`
 - Result type: `int` (0 for false, non-zero for true)
 
 **Logical Operators (`&&`, `||`):**
+
 - Both operands must be `int`
 - Result type: `int`
 
 **Logical NOT Operator (`!`):**
+
 - Operand must be `int`
 - Result type: `int`
 
 **Increment/Decrement Operators (`++`, `--`):**
+
 - Operand must be `int` (prefix or postfix)
 - Operand must be a variable identifier or a member access expression (cannot be a literal or other expression)
 - Result type: `int`
 
 **Member Access Operator (`.`):**
+
 - Left operand must be a struct type
 - Right operand must be a member name of that struct type
 - Result type: type of the struct member
 
 **Function Call:**
+
 - Number of arguments must match number of parameters
 - Argument types must match parameter types (no type coercion)
 - Result type: return type of the function
 
 **Struct literal:**
+
 - When a context supplies an expected struct type, the literal must have the same number of fields as the struct, and each field expression’s type must equal the corresponding member’s type (no coercion between distinct primitive types)
 - **Exception:** `TypeMismatchInExpression(<StructLiteral>)` — `<StructLiteral>` is the full struct literal node
 
 **Assignment Expression:**
+
 - Left-hand side must be an identifier or a member access expression (cannot be a literal or other expression)
 - Left-hand side and right-hand side must have the same type
 - Result type: type of the left-hand side (after assignment)
@@ -597,12 +624,13 @@ void assignmentExpressionValid() {
 - Right-associative: `x = y = z = 10;` is parsed as `x = (y = (z = 10));`
 
 **Examples:**
+
 ```tyc
 // Error: Arithmetic operation type mismatch
 void arithmeticError() {
     int x = 5;
     string text = "hello";
-    
+
     int sum = x + text;     // Error: TypeMismatchInExpression at binary operation
     float result = x * text; // Error: TypeMismatchInExpression at binary operation
 }
@@ -611,7 +639,7 @@ void arithmeticError() {
 void modulusError() {
     float f = 3.14;
     int x = 10;
-    
+
     int result = f % x;      // Error: TypeMismatchInExpression at binary operation (float % int)
     int result2 = x % f;     // Error: TypeMismatchInExpression at binary operation (int % float)
 }
@@ -620,7 +648,7 @@ void modulusError() {
 void relationalError() {
     int x = 10;
     string text = "hello";
-    
+
     int result = x < text;   // Error: TypeMismatchInExpression at binary operation
     int equal = text == x;   // Error: TypeMismatchInExpression at binary operation
 }
@@ -629,7 +657,7 @@ void relationalError() {
 void logicalError() {
     float f = 3.14;
     int x = 10;
-    
+
     int result = f && x;     // Error: TypeMismatchInExpression at binary operation
     int not = !f;            // Error: TypeMismatchInExpression at unary operation
 }
@@ -653,12 +681,12 @@ void incrementOperandError() {
 void memberAccessError() {
     int x = 10;
     int value = x.member;    // Error: TypeMismatchInExpression at member access
-    
+
     struct Point {
         int x;
         int y;
     };
-    
+
     Point p = {10, 20};
     int invalid = p.z;       // Error: TypeMismatchInExpression at member access (z doesn't exist)
 }
@@ -685,7 +713,7 @@ void assignmentExpressionError() {
     int x = 10;
     string text = "hello";
     float f = 3.14;
-    
+
     int result = (x = text) + 5;     // Error: TypeMismatchInExpression at assignment expression (int = string)
     int value = (x = f) + 3;         // Error: TypeMismatchInExpression at assignment expression (int = float)
 }
@@ -704,23 +732,23 @@ void valid() {
     int compare = x < y;     // Valid: relational returns int
     int logic = x && y;      // Valid: logical returns int
     ++x;                     // Valid: increment on int
-    
+
     struct Point {
         int x;
         int y;
     };
-    
+
     Point p = {10, 20};
     int x_coord = p.x;       // Valid: member access
-    
+
     // Valid: Assignment expression in expression context
     int a;
     int b = (a = 5) + 7;      // Valid: assignment expression returns value of a (5), b = 12
-    
+
     // Valid: Chained assignment expression
     int c, d, e;
     c = d = e = 10;          // Valid: right-associative, all variables are 10
-    
+
     // Valid: Member access assignment expression
     int result = (p.x = 15) + 5;  // Valid: assignment expression returns value of p.x (15), result = 20
 }
@@ -733,6 +761,7 @@ void valid() {
 **Exception:** `MustInLoop(<statement>)`
 
 **Loop Context Rules:**
+
 - Break and continue are only valid inside `for` or `while` loops
 - Break can also be used in `switch` statements (but continue cannot)
 - Can be nested inside conditionals within loops
@@ -740,6 +769,7 @@ void valid() {
 - Must be in the lexical scope of a loop
 
 **Examples:**
+
 ```tyc
 // Error: Break/continue outside loop
 void loopError() {
@@ -788,7 +818,7 @@ void validLoops() {
         }
         printInt(i);
     }
-    
+
     auto j = 0;
     while (j < 10) {
         if (j == 3) {
@@ -881,6 +911,7 @@ TyC uses complete type inference with the following rules:
 ### Built-in Functions
 
 The following built-in functions are implicitly declared and available:
+
 - `int readInt()`
 - `float readFloat()`
 - `string readString()`
@@ -894,5 +925,5 @@ A TyC program must have at least one function named `main` that takes no paramet
 
 ---
 
-*Document prepared for TyC Static Semantic Analysis*  
-*Last updated: April 2026*
+_Document prepared for TyC Static Semantic Analysis_  
+_Last updated: April 2026_
