@@ -126,6 +126,7 @@ Lớp `ASTGeneration` phải:
    - Kiểm thử tất cả loại lỗi ngữ nghĩa và chương trình hợp lệ
    - Phủ các edge case và các tình huống ngữ nghĩa phức tạp
    - Xác minh đúng thông điệp lỗi và đúng hành vi chấp nhận chương trình
+   - Với bố cục test, xem `oplang-compiler/tests/test_checker.py` và wrapper `Checker` trong `tests/utils.py`
 
 ### Yêu cầu đối với phân tích ngữ nghĩa
 
@@ -145,9 +146,9 @@ Lớp `StaticChecker` phải:
 2. **UndeclaredIdentifier** - Dùng biến/tham số chưa khai báo
 3. **UndeclaredFunction** - Gọi hàm chưa khai báo
 4. **UndeclaredStruct** - Dùng kiểu struct chưa khai báo
-5. **TypeCannotBeInferred** - Không thể suy luận kiểu
-6. **TypeMismatchInStatement** - Sai kiểu trong câu lệnh
-7. **TypeMismatchInExpression** - Sai kiểu trong biểu thức
+5. **TypeCannotBeInferred** - đối số AST duy nhất `ctx` (ví dụ: toàn bộ **`AssignExpr`** cho `x = y`; các node khác nếu lỗi không nằm ở phép gán — xem tài liệu ràng buộc ngữ nghĩa)
+6. **TypeMismatchInStatement** - Sai kiểu trong câu lệnh (if, while, for, return, gán)
+7. **TypeMismatchInExpression** - Sai kiểu trong biểu thức (toán tử, gọi hàm, truy cập thành viên)
 8. **MustInLoop** - `break`/`continue` nằm ngoài vòng lặp
 
 ### Tiêu chí đánh giá
@@ -156,6 +157,43 @@ Lớp `StaticChecker` phải:
 - **Suy luận kiểu**: Chính xác cho mọi khai báo `auto`
 - **Phát hiện lỗi**: Đúng tất cả loại lỗi bắt buộc
 - **Độ phủ kiểm thử**: Chất lượng và mức bao phủ của 100 test semantic
+
+---
+
+## Bài tập 4 - Sinh mã
+
+### Các yêu cầu cần hoàn thành
+
+1. **Nghiên cứu các thành phần sinh mã**
+   - Đọc `src/codegen/codegen.py`, `src/codegen/emitter.py`, và các file hỗ trợ trong `src/codegen/`
+   - Tìm hiểu runtime support trong `src/runtime/io.java` và `src/runtime/jasmin.jar`
+   - Hiểu luồng đầu ra: `AST -> .j -> .class -> chạy trên JVM`
+
+2. **Cài đặt sinh mã**
+   - Hoàn thiện `CodeGenerator` trong `src/codegen/codegen.py`
+   - Hoàn thiện `Emitter` trong `src/codegen/emitter.py`
+   - Sinh mã Jasmin đúng cho các chương trình TyC
+
+3. **Viết test cho Bài tập 4**
+   - Cài đặt **100 test case** trong `tests/test_codegen.py`
+   - Bao phủ cả cấu trúc ngôn ngữ cơ bản và nâng cao
+   - Xác minh đầu ra của chương trình được sinh
+
+### Yêu cầu đối với sinh mã
+
+Phần cài đặt Bài tập 4 phải:
+
+- **Duyệt AST bằng ASTVisitor** và phát sinh mã cho khai báo, câu lệnh, biểu thức
+- **Sinh mã Jasmin hợp lệ** có thể assemble và thực thi
+- **Hỗ trợ các hàm I/O dựng sẵn** qua runtime class `io`
+- **Quản lý stack, biến cục bộ và nhãn** đúng trong quá trình sinh mã
+
+### Tiêu chí đánh giá
+
+- **Cài đặt sinh mã**: Đúng và đầy đủ của `CodeGenerator` và `Emitter`
+- **Thực thi runtime**: Mã sinh ra assemble và chạy đúng trên JVM
+- **Độ phủ kiểm thử**: Chất lượng và mức bao phủ của test sinh mã
+- **Độ đúng đầu ra**: Kết quả chương trình khớp mong đợi trong test
 
 ---
 
@@ -168,6 +206,7 @@ Lớp `StaticChecker` phải:
 ├── README.md             # Tài liệu dự án
 ├── requirements.txt      # Phụ thuộc Python
 ├── tyc_specification.md  # Đặc tả ngôn ngữ
+├── tyc-semantic_constraints_and_errors.md  # Ràng buộc ngữ nghĩa (Bài tập 3)
 ├── external/             # Phụ thuộc bên ngoài
 │   └── antlr-4.13.2-complete.jar
 ├── src/                  # Mã nguồn
@@ -181,11 +220,28 @@ Lớp `StaticChecker` phải:
 │       ├── error_listener.py
 │       ├── nodes.py      # Định nghĩa lớp node AST
 │       └── visitor.py    # Các lớp visitor cơ sở
+│   ├── semantics/        # Phân tích ngữ nghĩa (Bài tập 3)
+│   │   ├── __init__.py
+│   │   ├── static_checker.py   # StaticChecker — phần sinh viên cài đặt
+│   │   └── static_error.py     # Các lớp ngoại lệ lỗi ngữ nghĩa (cho sẵn)
+│   ├── codegen/          # Sinh mã (Bài tập 4)
+│   │   ├── codegen.py    # CodeGenerator — phần sinh viên cài đặt
+│   │   ├── emitter.py    # Emitter helpers — phần sinh viên cài đặt
+│   │   ├── frame.py      # Quản lý frame
+│   │   ├── jasmin_code.py
+│   │   ├── io.py
+│   │   ├── utils.py
+│   │   └── error.py
+│   └── runtime/          # Runtime support cho Bài tập 4
+│       ├── io.java
+│       └── jasmin.jar
 └── tests/                # Bộ kiểm thử
     ├── test_lexer.py     # Test lexer
     ├── test_parser.py    # Test parser
     ├── test_ast_gen.py   # Test sinh AST
-    └── utils.py          # Tiện ích kiểm thử
+    ├── test_checker.py   # Test phân tích ngữ nghĩa (Bài tập 3)
+    ├── test_codegen.py   # Test sinh mã (Bài tập 4)
+    └── utils.py          # Tiện ích kiểm thử (Tokenizer, Parser, ASTGenerator, Checker, CodeGenerator)
 ```
 
 ## Bắt đầu nhanh
@@ -232,10 +288,13 @@ Lớp `StaticChecker` phải:
    ```
 
 6. **Chạy test:**
+
    ```bash
    python3 run.py test-lexer
    python3 run.py test-parser
    python3 run.py test-ast
+   python3 run.py test-checker
+   python3 run.py test-codegen
    ```
 
 ## Các lệnh hiện có
@@ -246,6 +305,8 @@ Lớp `StaticChecker` phải:
 - `python3 run.py test-lexer` - Chạy test lexer
 - `python3 run.py test-parser` - Chạy test parser
 - `python3 run.py test-ast` - Chạy test sinh AST
+- `python3 run.py test-checker` - Chạy test static checker (Bài tập 3)
+- `python3 run.py test-codegen` - Chạy test sinh mã (Bài tập 4)
 - `python3 run.py clean` - Dọn file build
 
 ## Giấy phép
