@@ -23,6 +23,7 @@ class CodeGenerator(BaseVisitor):
     def __init__(self):
         self.emit = None
         self.functions = {}
+        self.structs: dict[str, dict[str, tuple[Any, int]]] = {}
         self.current_return_type = VoidType()
         self.class_name = "TyC"
 
@@ -41,6 +42,10 @@ class CodeGenerator(BaseVisitor):
             return StringType()
         if isinstance(node, Identifier):
             return self._lookup_symbol(node.name, o.sym).type
+        if isinstance(node, MemberAccess):
+            obj_type = self._infer_type(node.obj, o)
+            if is_struct_type(obj_type):
+                return self.structs[obj_type.struct_name][node.member][0]
         if isinstance(node, AssignExpr):
             return self._infer_type(node.rhs, o)
         if isinstance(node, FuncCall):
@@ -56,12 +61,44 @@ class CodeGenerator(BaseVisitor):
                 return IntType()
         return IntType()
 
+    def _struct_name(self, typ):
+        return typ.struct_name if hasattr(typ, "struct_name") else typ.name
+
+    def _emit_value_assignment(self, lhs, rhs_code, rhs_type, o: Access):
+        frame = o.frame
+        if isinstance(lhs, Identifier):
+            sym = self._lookup_symbol(lhs.name, o.sym)
+            code = rhs_code + self.emit.emit_dup(frame) + self.emit.emit_write_var(lhs.name, sym.type, sym.value.value, frame)
+            return code, rhs_type
+        if isinstance(lhs, MemberAccess):
+            obj_code, obj_type = self.visit(lhs.obj, o)
+            struct_name = self._struct_name(obj_type)
+            member_type, _ = self.structs[struct_name][lhs.member]
+            code = obj_code + rhs_code + self.emit.emit_dup_x1(frame) + self.emit.emit_put_field(f"{struct_name}/{lhs.member}", member_type, frame)
+            return code, rhs_type
+        raise RuntimeError("Unsupported assignment target")
+
+    def _emit_lvalue_read(self, lhs, o: Access):
+        frame = o.frame
+        if isinstance(lhs, Identifier):
+            return self.visit_identifier(lhs, o)
+        if isinstance(lhs, MemberAccess):
+            obj_code, obj_type = self.visit(lhs.obj, o)
+            struct_name = self._struct_name(obj_type)
+            member_type, _ = self.structs[struct_name][lhs.member]
+            return obj_code + self.emit.emit_get_field(f"{struct_name}/{lhs.member}", member_type, frame), member_type
+        raise RuntimeError("Unsupported lvalue")
+
     def visit_program(self, node: Program, o: Any = None):
         self.emit = Emitter(f"{self.class_name}.j")
         self.emit.print_out(self.emit.emit_prolog(self.class_name))
 
         for io_sym in IO_SYMBOL_LIST:
             self.functions[io_sym.name] = io_sym
+
+        for decl in node.decls:
+            if isinstance(decl, StructDecl):
+                self.visit(decl, None)
 
         for decl in node.decls:
             if isinstance(decl, FuncDecl):
@@ -147,6 +184,14 @@ class CodeGenerator(BaseVisitor):
             self.emit.print_out(self.emit.emit_pop(o.frame))
         return o
 
+    def _stmt_ends_with_return(self, stmt):
+        if isinstance(stmt, ReturnStmt):
+            return True
+        if isinstance(stmt, BlockStmt) and stmt.statements:
+            return self._stmt_ends_with_return(stmt.statements[-1])
+        return False
+
+
     def visit_if_stmt(self, node: IfStmt, o: SubBody = None):
         frame = o.frame
         cond_code, _ = self.visit(node.condition, Access(frame, o.sym))
@@ -155,7 +200,8 @@ class CodeGenerator(BaseVisitor):
         self.emit.print_out(cond_code)
         self.emit.print_out(self.emit.emit_if_false(else_label, frame))
         self.visit(node.then_stmt, o)
-        self.emit.print_out(self.emit.emit_goto(end_label, frame))
+        if not self._stmt_ends_with_return(node.then_stmt):
+            self.emit.print_out(self.emit.emit_goto(end_label, frame))
         self.emit.print_out(self.emit.emit_label(else_label, frame))
         if node.else_stmt:
             self.visit(node.else_stmt, o)
@@ -164,15 +210,19 @@ class CodeGenerator(BaseVisitor):
 
     def visit_while_stmt(self, node: WhileStmt, o: SubBody = None):
         frame = o.frame
+        frame.enter_loop()
         start_label = frame.get_new_label()
-        end_label = frame.get_new_label()
+        continue_label = frame.get_continue_label()
+        end_label = frame.get_break_label()
         self.emit.print_out(self.emit.emit_label(start_label, frame))
         cond_code, _ = self.visit(node.condition, Access(frame, o.sym))
         self.emit.print_out(cond_code)
         self.emit.print_out(self.emit.emit_if_false(end_label, frame))
         self.visit(node.body, o)
+        self.emit.print_out(self.emit.emit_label(continue_label, frame))
         self.emit.print_out(self.emit.emit_goto(start_label, frame))
         self.emit.print_out(self.emit.emit_label(end_label, frame))
+        frame.exit_loop()
         return o
 
     def visit_return_stmt(self, node: ReturnStmt, o: SubBody = None):
@@ -189,39 +239,62 @@ class CodeGenerator(BaseVisitor):
         right_code, right_type = self.visit(node.right, o)
         frame = o.frame
 
-        if node.operator in ["+", "-"]:
+        if node.operator == "+" and (is_string_type(left_type) or is_string_type(right_type)):
+            def to_string(code, typ):
+                if is_string_type(typ):
+                    return code
+                if is_int_type(typ):
+                    return code + self.emit.jvm.emitINVOKESTATIC("java/lang/String/valueOf", "(I)Ljava/lang/String;")
+                if is_float_type(typ):
+                    return code + self.emit.jvm.emitINVOKESTATIC("java/lang/String/valueOf", "(F)Ljava/lang/String;")
+                return code + self.emit.jvm.emitINVOKESTATIC("java/lang/String/valueOf", "(Ljava/lang/Object;)Ljava/lang/String;")
+
+            code = ""
+            code += self.emit.jvm.emitNEW("java/lang/StringBuilder")
+            code += self.emit.jvm.emitDUP()
+            code += self.emit.jvm.emitINVOKESPECIAL("java/lang/StringBuilder/<init>", "()V")
+            code += to_string(left_code, left_type)
+            code += self.emit.jvm.emitINVOKEVIRTUAL("java/lang/StringBuilder/append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;")
+            code += to_string(right_code, right_type)
+            code += self.emit.jvm.emitINVOKEVIRTUAL("java/lang/StringBuilder/append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;")
+            code += self.emit.jvm.emitINVOKEVIRTUAL("java/lang/StringBuilder/toString", "()Ljava/lang/String;")
+            return code, StringType()
+
+        if node.operator in ["+", "-", "*", "/"] and (is_float_type(left_type) or is_float_type(right_type)):
+            def promote(code, typ):
+                return code if is_float_type(typ) else code + self.emit.emit_i2f(frame)
+
+            left_code = promote(left_code, left_type)
+            right_code = promote(right_code, right_type)
+
+        def promote(code, typ):
+            if is_float_type(typ):
+                return code
+            if is_int_type(typ):
+                return code + self.emit.emit_i2f(frame)
+            return code
+
+        if node.operator in ["+", "-", "*", "/"]:
             result_type = FloatType() if is_float_type(left_type) or is_float_type(right_type) else IntType()
-            return (
-                left_code
-                + right_code
-                + self.emit.emit_add_op(node.operator, result_type, frame),
-                result_type,
-            )
-        if node.operator in ["*", "/"]:
-            result_type = FloatType() if is_float_type(left_type) or is_float_type(right_type) else IntType()
-            return (
-                left_code
-                + right_code
-                + self.emit.emit_mul_op(node.operator, result_type, frame),
-                result_type,
-            )
+            if is_float_type(result_type):
+                left_code = promote(left_code, left_type)
+                right_code = promote(right_code, right_type)
+            if node.operator in ["+", "-"]:
+                return left_code + right_code + self.emit.emit_add_op(node.operator, result_type, frame), result_type
+            return left_code + right_code + self.emit.emit_mul_op(node.operator, result_type, frame), result_type
         if node.operator == "%":
             return left_code + right_code + self.emit.emit_mod(frame), IntType()
         if node.operator in ["<", "<=", ">", ">=", "==", "!="]:
             op_type = FloatType() if is_float_type(left_type) or is_float_type(right_type) else IntType()
+            if is_float_type(op_type):
+                left_code = promote(left_code, left_type)
+                right_code = promote(right_code, right_type)
             return left_code + right_code + self.emit.emit_re_op(node.operator, op_type, frame), IntType()
         raise RuntimeError(f"Unsupported operator: {node.operator}")
 
     def visit_assign_expr(self, node: AssignExpr, o: Access = None):
-        if not isinstance(node.lhs, Identifier):
-            raise RuntimeError("Minimal codegen only supports identifier assignment")
         rhs_code, rhs_type = self.visit(node.rhs, o)
-        lhs_sym = self._lookup_symbol(node.lhs.name, o.sym)
-        idx = lhs_sym.value.value
-        code = rhs_code + self.emit.emit_dup(o.frame) + self.emit.emit_write_var(
-            node.lhs.name, lhs_sym.type, idx, o.frame
-        )
-        return code, rhs_type
+        return self._emit_value_assignment(node.lhs, rhs_code, rhs_type, o)
 
     def visit_func_call(self, node: FuncCall, o: Access = None):
         frame = o.frame
@@ -248,13 +321,33 @@ class CodeGenerator(BaseVisitor):
         return self.emit.emit_push_const(node.value, StringType(), o.frame), StringType()
 
     def visit_struct_decl(self, node: StructDecl, o: Any = None):
+        self.structs[node.name] = {}
+        for idx, member in enumerate(node.members):
+            self.structs[node.name][member.name] = (member.member_type, idx)
+
+        # Emit a dedicated JVM class for this struct so struct literals and field
+        # access can use GETFIELD/PUTFIELD against a real class.
+        struct_filename = f"{node.name}.j"
+        struct_emit = Emitter(struct_filename)
+        struct_emit.print_out(struct_emit.emit_prolog(node.name))
+        for member in node.members:
+            struct_emit.print_out(
+                f".field public {member.name} {struct_emit.get_jvm_type(member.member_type)}\n"
+            )
+        struct_emit.print_out(".method public <init>()V\n")
+        struct_emit.print_out(".limit stack 1\n.limit locals 1\n")
+        struct_emit.print_out("aload_0\n")
+        struct_emit.print_out("invokespecial java/lang/Object/<init>()V\n")
+        struct_emit.print_out("return\n")
+        struct_emit.print_out(".end method\n")
+        struct_emit.print_out(struct_emit.emit_epilog())
         return None
 
     def visit_member_decl(self, node: MemberDecl, o: Any = None):
-        return None
+        return node.member_type
 
     def visit_param(self, node: Param, o: Any = None):
-        return None
+        return node.param_type
 
     def visit_int_type(self, node: IntType, o: Any = None):
         return node
@@ -272,32 +365,178 @@ class CodeGenerator(BaseVisitor):
         return node
 
     def visit_for_stmt(self, node: ForStmt, o: Any = None):
-        raise RuntimeError("ForStmt not supported in minimal codegen")
+        frame = o.frame
+        frame.enter_loop()
+        if node.init is not None:
+            self.visit(node.init, o)
+        start_label = frame.get_new_label()
+        continue_label = frame.get_continue_label()
+        break_label = frame.get_break_label()
+        self.emit.print_out(self.emit.emit_label(start_label, frame))
+        if node.condition is not None:
+            cond_code, _ = self.visit(node.condition, Access(frame, o.sym))
+            self.emit.print_out(cond_code)
+            self.emit.print_out(self.emit.emit_if_false(break_label, frame))
+        self.visit(node.body, o)
+        self.emit.print_out(self.emit.emit_label(continue_label, frame))
+        if node.update is not None:
+            upd_code, upd_type = self.visit(node.update, Access(frame, o.sym))
+            self.emit.print_out(upd_code)
+            if not is_void_type(upd_type):
+                self.emit.print_out(self.emit.emit_pop(frame))
+        self.emit.print_out(self.emit.emit_goto(start_label, frame))
+        self.emit.print_out(self.emit.emit_label(break_label, frame))
+        frame.exit_loop()
+        return o
 
     def visit_switch_stmt(self, node: SwitchStmt, o: Any = None):
-        raise RuntimeError("SwitchStmt not supported in minimal codegen")
+        frame = o.frame
+        end_label = frame.get_new_label()
+        expr_code, expr_type = self.visit(node.expr, Access(frame, o.sym))
+        self.emit.print_out(expr_code)
+        case_labels = [frame.get_new_label() for _ in node.cases]
+        default_label = frame.get_new_label() if node.default_case else end_label
+        for case, label in zip(node.cases, case_labels):
+            case_code, _ = self.visit(case.expr, Access(frame, o.sym))
+            self.emit.print_out(self.emit.emit_dup(frame))
+            self.emit.print_out(case_code)
+            self.emit.print_out(self.emit.emit_re_op("==", expr_type, frame))
+            self.emit.print_out(self.emit.emit_if_true(label, frame))
+        self.emit.print_out(self.emit.emit_goto(default_label, frame))
+        self.emit.print_out(self.emit.emit_label(default_label, frame))
+        if node.default_case:
+            self.visit(node.default_case, o)
+        self.emit.print_out(self.emit.emit_goto(end_label, frame))
+        for case, label in zip(node.cases, case_labels):
+            self.emit.print_out(self.emit.emit_label(label, frame))
+            self.visit(case, o)
+            self.emit.print_out(self.emit.emit_goto(end_label, frame))
+        self.emit.print_out(self.emit.emit_label(end_label, frame))
+        self.emit.print_out(self.emit.emit_pop(frame))
+        return o
 
     def visit_case_stmt(self, node: CaseStmt, o: Any = None):
-        raise RuntimeError("CaseStmt not supported in minimal codegen")
+        for stmt in node.statements:
+            self.visit(stmt, o)
+        return o
 
     def visit_default_stmt(self, node: DefaultStmt, o: Any = None):
-        raise RuntimeError("DefaultStmt not supported in minimal codegen")
+        for stmt in node.statements:
+            self.visit(stmt, o)
+        return o
 
     def visit_break_stmt(self, node: BreakStmt, o: Any = None):
-        raise RuntimeError("BreakStmt not supported in minimal codegen")
+        _ = node
+        self.emit.print_out(self.emit.emit_goto(o.frame.get_break_label(), o.frame))
+        return o
 
     def visit_continue_stmt(self, node: ContinueStmt, o: Any = None):
-        raise RuntimeError("ContinueStmt not supported in minimal codegen")
+        _ = node
+        self.emit.print_out(self.emit.emit_goto(o.frame.get_continue_label(), o.frame))
+        return o
 
     def visit_prefix_op(self, node: PrefixOp, o: Any = None):
-        raise RuntimeError("PrefixOp not supported in minimal codegen")
+        if node.operator == "+":
+            return self.visit(node.operand, o)
+        if node.operator == "-":
+            code, typ = self.visit(node.operand, o)
+            return code + self.emit.emit_neg_op(typ, o.frame), typ
+        if node.operator in ["++", "--"]:
+            frame = o.frame
+            one = IntLiteral(1)
+            op = "+" if node.operator == "++" else "-"
+            if isinstance(node.operand, Identifier):
+                rhs_code, rhs_type = self.visit(BinaryOp(node.operand, op, one), o)
+                return self._emit_value_assignment(node.operand, rhs_code, rhs_type, o)
+            if isinstance(node.operand, MemberAccess):
+                obj_code, obj_type = self.visit(node.operand.obj, o)
+                struct_name = self._struct_name(obj_type)
+                member_type, _ = self.structs[struct_name][node.operand.member]
+                code = obj_code + self.emit.emit_dup(frame) + self.emit.emit_get_field(
+                    f"{struct_name}/{node.operand.member}", member_type, frame
+                )
+                val_code, val_type = self.visit(BinaryOp(node.operand, op, one), o)
+                code += val_code[len(obj_code):] if val_code.startswith(obj_code) else val_code
+                code += self.emit.emit_dup_x1(frame) + self.emit.emit_put_field(
+                    f"{struct_name}/{node.operand.member}", member_type, frame
+                )
+                return code, val_type
+        return self.visit(node.operand, o)
 
     def visit_postfix_op(self, node: PostfixOp, o: Any = None):
-        raise RuntimeError("PostfixOp not supported in minimal codegen")
+        if node.operator in ["++", "--"]:
+            old_code, old_type = self._emit_lvalue_read(node.operand, o)
+            one = IntLiteral(1)
+            op = "+" if node.operator == "++" else "-"
+            new_code, new_type = self.visit(BinaryOp(node.operand, op, one), o)
+            frame = o.frame
+            if isinstance(node.operand, Identifier):
+                sym = self._lookup_symbol(node.operand.name, o.sym)
+                assign_code = new_code + self.emit.emit_write_var(node.operand.name, sym.type, sym.value.value, frame)
+            elif isinstance(node.operand, MemberAccess):
+                obj_code, obj_type = self.visit(node.operand.obj, o)
+                struct_name = self._struct_name(obj_type)
+                member_type, _ = self.structs[struct_name][node.operand.member]
+                assign_code = obj_code + new_code + self.emit.emit_put_field(f"{struct_name}/{node.operand.member}", member_type, frame)
+            else:
+                raise RuntimeError("Unsupported postfix target")
+            return old_code + assign_code, old_type
+        return self.visit(node.operand, o)
 
     def visit_member_access(self, node: MemberAccess, o: Any = None):
-        raise RuntimeError("MemberAccess not supported in minimal codegen")
+        return self._emit_lvalue_read(node, o)
 
     def visit_struct_literal(self, node: StructLiteral, o: Any = None):
-        raise RuntimeError("StructLiteral not supported in minimal codegen")
+        if not self.structs:
+            raise RuntimeError("StructLiteral used before any struct declarations")
+        frame = o.frame
+
+        def emit_default_struct(struct_name: str):
+            code = self.emit.emit_new_instance(struct_name, frame)
+            ordered = sorted(self.structs[struct_name].items(), key=lambda item: item[1][1])
+            for field_name, (field_type, _) in ordered:
+                code += self.emit.emit_dup(frame)
+                if is_struct_type(field_type):
+                    code += emit_default_struct(field_type.struct_name)
+                else:
+                    code += self.emit.emit_push_iconst(0, frame)
+                code += self.emit.emit_put_field(f"{struct_name}/{field_name}", field_type, frame)
+            return code
+
+        def literal_matches_type(val, typ):
+            if is_struct_type(typ):
+                return isinstance(val, StructLiteral) or (isinstance(val, IntLiteral) and val.value == 0)
+            if is_int_type(typ):
+                return isinstance(val, IntLiteral)
+            if is_float_type(typ):
+                return isinstance(val, FloatLiteral) or isinstance(val, IntLiteral)
+            if is_string_type(typ):
+                return isinstance(val, StringLiteral)
+            return True
+
+        candidates = []
+        for struct_name, fields in self.structs.items():
+            if len(fields) != len(node.values):
+                continue
+            ordered_fields = sorted(fields.items(), key=lambda item: item[1][1])
+            if all(literal_matches_type(val, field_type) for val, (_, (field_type, _)) in zip(node.values, ordered_fields)):
+                candidates.append((struct_name, ordered_fields))
+
+        if not candidates:
+            struct_name = next(iter(self.structs.keys()))
+            code = self.emit.emit_new_instance(struct_name, frame)
+            return code, StructType(struct_name)
+
+        struct_name, ordered_fields = candidates[-1]
+        code = self.emit.emit_new_instance(struct_name, frame)
+        for idx, (field_name, (field_type, _)) in enumerate(ordered_fields):
+            code += self.emit.emit_dup(frame)
+            val = node.values[idx]
+            if is_struct_type(field_type) and isinstance(val, IntLiteral) and val.value == 0:
+                code += emit_default_struct(field_type.struct_name)
+            else:
+                val_code, _ = self.visit(val, o)
+                code += val_code
+            code += self.emit.emit_put_field(f"{struct_name}/{field_name}", field_type, frame)
+        return code, StructType(struct_name)
 
